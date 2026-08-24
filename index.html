@@ -304,11 +304,11 @@ tbody tr:hover{background:var(--superficie)}
     <div class="erro" id="loginErro"></div>
     <div class="campo">
       <label for="inUsuario">Usuário</label>
-      <input id="inUsuario" type="text" autocomplete="username" placeholder="seu.usuario">
+      <input id="inUsuario" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="seu.usuario">
     </div>
     <div class="campo">
       <label for="inSenha">Senha</label>
-      <input id="inSenha" type="password" autocomplete="current-password" placeholder="••••••••">
+      <input id="inSenha" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="••••••••">
     </div>
     <button class="btn bloco" id="btnEntrar">Entrar</button>
     <div style="text-align:center;margin-top:10px">
@@ -425,7 +425,7 @@ tbody tr:hover{background:var(--superficie)}
    Sem URL, o app roda em modo local no próprio navegador.
    ========================================================== */
 var CONFIG = {
-  API_URL: '',      // ex.: https://script.google.com/macros/s/AKfy.../exec
+  API_URL: 'https://script.google.com/macros/s/AKfycbxMCm1D_AD29cSB8SvoWvfRlHYWt6RABcwme1o-cXFd2YjJG8ezm9IHTqB3XHlqZx6d/exec',
   MAX_MB: 60        // tamanho máximo por anexo
 };
 
@@ -627,12 +627,12 @@ function capa(anexos){
 /* ---------- login ---------- */
 function entrar(){
   var u=document.getElementById('inUsuario').value.trim().toLowerCase();
-  var s=document.getElementById('inSenha').value;
+  var s=document.getElementById('inSenha').value.trim();
   var box=document.getElementById('loginErro');
   if(!u||!s){ box.textContent='Preencha usuário e senha.'; box.classList.add('ativo'); return; }
   var achou=estado.usuarios.filter(function(x){
     return x.usuario.toLowerCase()===u && String(x.senha)===s; })[0];
-  if(!achou){ box.textContent='Usuário ou senha não confere.'; box.classList.add('ativo'); return; }
+  if(!achou){ box.textContent='Usuário ou senha não confere.'+(API.ativo()?'':' (modo local: este aparelho tem seu próprio cadastro)'); box.classList.add('ativo'); return; }
   box.classList.remove('ativo');
   sessao={id:achou.id,nome:achou.nome,usuario:achou.usuario,papel:achou.papel};
   Store.set('pauta_sessao',JSON.stringify(sessao));
