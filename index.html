@@ -329,6 +329,11 @@ tbody tr:hover{background:var(--superficie)}
     <button class="btn bloco" id="btnEntrar">Entrar</button>
     <div style="text-align:center;margin-top:10px">
       <button class="link" id="btnEsqueci">Esqueci minha senha</button>
+      <span style="color:var(--linha-forte)">·</span>
+      <button class="link" id="btnTestar">Testar conexão</button>
+    </div>
+    <div style="text-align:center;margin-top:14px">
+      <span class="nuvem" id="seloLogin">Verificando conexão…</span>
     </div>
   </div>
 </div>
@@ -445,6 +450,10 @@ var CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbxMCm1D_AD29cSB8SvoWvfRlHYWt6RABcwme1o-cXFd2YjJG8ezm9IHTqB3XHlqZx6d/exec',
   MAX_MB: 60        // tamanho máximo por anexo
 };
+/* Permite trocar a URL do backend por este aparelho, sem editar o arquivo
+   (usado pelo botão "Testar conexão" na tela de login). */
+try{ var _apiSalva=localStorage.getItem('pauta_api'); if(_apiSalva) CONFIG.API_URL=_apiSalva; }catch(e){}
+var nuvemOk=false;
 
 /* ---------- armazenamento ---------- */
 var memoria={};
@@ -535,6 +544,64 @@ var API={
       .catch(function(e){ if(erro) erro(String(e)); else toast('Sem conexão com o servidor'); });
   }
 };
+
+/* ---------- diagnóstico da conexão ---------- */
+function testarConexao(url,pronto){
+  var alvo=(url||CONFIG.API_URL||'').trim();
+  if(!alvo){ pronto({ok:false,txt:'Nenhuma URL configurada. O app está rodando só neste aparelho.'}); return; }
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/[^\/]+\/exec$/.test(alvo)){
+    pronto({ok:false,txt:'A URL não tem o formato esperado (…/macros/s/ID/exec). Copie de Implantar > Gerenciar implantações.'}); return;
+  }
+  fetch(alvo,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({acao:'carregarTudo',dados:{}})})
+  .then(function(r){ return r.text().then(function(t){ return {st:r.status,t:t}; }); })
+  .then(function(r){
+    if(r.st===404){ pronto({ok:false,txt:'404 — esta implantação não existe mais. Abra o Apps Script da planilha, vá em Implantar > Gerenciar implantações e copie a URL que aparece lá (ou crie uma nova).'}); return; }
+    if(r.st===401||r.st===403||/<html/i.test(r.t)){
+      pronto({ok:false,txt:'O servidor pediu login em vez de responder. Na implantação, em "Quem pode acessar", escolha "Qualquer pessoa".'}); return; }
+    var j=null; try{ j=JSON.parse(r.t); }catch(e){}
+    if(!j){ pronto({ok:false,txt:'Resposta inesperada do servidor (HTTP '+r.st+').'}); return; }
+    if(!j.ok){ pronto({ok:false,txt:'O script respondeu com erro: '+(j.erro||'desconhecido')}); return; }
+    var d=j.dados||{}, us=(d.usuarios||[]);
+    pronto({ok:true,
+      txt:'Conectado. '+us.length+' usuário(s), '+(d.colunas||[]).length+' coluna(s), '+
+          (d.cartoes||[]).length+' ação(ões), '+(d.posts||[]).length+' post(s).',
+      lista:us.map(function(u){ return u.usuario; })});
+  })
+  .catch(function(e){ pronto({ok:false,txt:'Não foi possível chegar ao servidor. Verifique a URL e se a implantação está publicada. ('+e+')'}); });
+}
+function modalTestar(){
+  abrirModal('<div class="modal-topo"><h3>Conexão com a planilha</h3>'+
+    '<button class="fechar" onclick="fecharModal()">×</button></div>'+
+    '<div class="modal-corpo">'+
+      '<div class="campo"><label for="tcUrl">URL do backend (Apps Script)</label>'+
+      '<textarea id="tcUrl" style="min-height:64px;font-size:12px">'+esc(CONFIG.API_URL||'')+'</textarea></div>'+
+      '<div id="tcRes"><p class="aviso">Copie a URL em Apps Script > Implantar > Gerenciar implantações e teste aqui antes de gravar.</p></div>'+
+    '</div>'+
+    '<div class="modal-pe"><button class="btn" id="tcOk">Testar</button>'+
+    '<button class="btn claro" id="tcSalvar">Usar neste aparelho</button>'+
+    '<span class="espaco"></span><button class="btn claro mini" id="tcLimpar">Restaurar</button></div>');
+  function mostrar(r){
+    document.getElementById('tcRes').innerHTML=
+      '<div class="erro ativo" style="'+(r.ok?'background:var(--tint-verde);border-color:var(--verde);color:var(--verde)':'')+'">'+
+      esc(r.txt)+'</div>'+
+      (r.ok&&r.lista&&r.lista.length?'<p class="aviso">Usuários na planilha: '+esc(r.lista.join(', '))+'</p>':'');
+  }
+  document.getElementById('tcOk').onclick=function(){
+    var u=document.getElementById('tcUrl').value.trim();
+    document.getElementById('tcRes').innerHTML='<p class="aviso">Testando…</p>';
+    testarConexao(u,mostrar);
+  };
+  document.getElementById('tcSalvar').onclick=function(){
+    var u=document.getElementById('tcUrl').value.trim();
+    try{ localStorage.setItem('pauta_api',u); }catch(e){}
+    toast('URL gravada neste aparelho — recarregando'); setTimeout(function(){ location.reload(); },900);
+  };
+  document.getElementById('tcLimpar').onclick=function(){
+    try{ localStorage.removeItem('pauta_api'); }catch(e){}
+    toast('URL do arquivo restaurada — recarregando'); setTimeout(function(){ location.reload(); },900);
+  };
+}
 
 /* ---------- modal ---------- */
 var fundo=document.getElementById('fundo'), modal=document.getElementById('modal');
@@ -692,7 +759,9 @@ function entrar(){
   if(!u||!s){ box.textContent='Preencha usuário e senha.'; box.classList.add('ativo'); return; }
   var achou=estado.usuarios.filter(function(x){
     return x.usuario.toLowerCase()===u && String(x.senha)===s; })[0];
-  if(!achou){ box.textContent='Usuário ou senha não confere.'+(API.ativo()?'':' (modo local: este aparelho tem seu próprio cadastro)'); box.classList.add('ativo'); return; }
+  if(!achou){ box.textContent='Usuário ou senha não confere.'+
+    (nuvemOk?'':' O app está sem conexão com a planilha e só reconhece o cadastro deste aparelho — use "Testar conexão".');
+    box.classList.add('ativo'); return; }
   box.classList.remove('ativo');
   sessao={id:achou.id,nome:achou.nome,usuario:achou.usuario,papel:achou.papel};
   Store.set('pauta_sessao',JSON.stringify(sessao));
@@ -712,8 +781,8 @@ function mostrarApp(){
   document.getElementById('uPapel').textContent=sessao.papel==='admin'?'Administrador':'Colaborador';
   document.getElementById('uAvatar').textContent=iniciais(sessao.nome);
   var s1=document.getElementById('selo1');
-  s1.textContent=API.ativo()?'Nuvem ativa':'Modo local';
-  s1.className='nuvem'+(API.ativo()?' on':'');
+  s1.textContent=nuvemOk?'Nuvem ativa':'Modo local — sem planilha';
+  s1.className='nuvem'+(nuvemOk?' on':'');
   montarAbas(); irPara(abaAtual);
 }
 document.getElementById('btnEsqueci').onclick=function(){
@@ -1277,6 +1346,7 @@ document.getElementById('btnTrocarSenha').onclick=function(){
 };
 
 /* ---------- start ---------- */
+document.getElementById('btnTestar').onclick=modalTestar;
 document.getElementById('btnEntrar').onclick=entrar;
 document.getElementById('btnSair').onclick=sair;
 ['inUsuario','inSenha'].forEach(function(x){
@@ -1284,6 +1354,9 @@ document.getElementById('btnSair').onclick=sair;
 
 function iniciar(){
   document.getElementById('splash').classList.add('oculto');
+  var sl=document.getElementById('seloLogin');
+  sl.textContent=nuvemOk?'Nuvem ativa':'Modo local — sem conexão com a planilha';
+  sl.className='nuvem'+(nuvemOk?' on':'');
   var s=Store.get('pauta_sessao'), valido=null;
   if(s){ try{ var ss=JSON.parse(s);
     valido=estado.usuarios.filter(function(u){return u.id===ss.id;})[0]||null; }catch(e){} }
@@ -1294,9 +1367,9 @@ function iniciar(){
 carregarLocal();
 if(API.ativo()){
   API.chamar('carregarTudo',{},function(d){
-    if(d && d.usuarios){ estado=d; normalizar(); Store.set(CHAVE,JSON.stringify(estado)); }
+    if(d && d.usuarios){ nuvemOk=true; estado=d; normalizar(); Store.set(CHAVE,JSON.stringify(estado)); }
     setTimeout(iniciar,300);
-  },function(){ toast('Sem conexão — usando dados locais'); setTimeout(iniciar,300); });
+  },function(){ nuvemOk=false; toast('Sem conexão com a planilha — usando dados deste aparelho'); setTimeout(iniciar,300); });
 } else {
   setTimeout(iniciar,1400);
 }
