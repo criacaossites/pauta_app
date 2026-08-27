@@ -1,42 +1,13 @@
-/*************************************************************
- * PAUTA — backend Google Apps Script
- * Guarda usuários, colunas, ações, posts, pedidos de senha
- * na planilha e os anexos (PNG, JPG, PDF, SVG) no Drive.
- *
- * COMO INSTALAR
- * 1. Crie uma planilha no Google Sheets e copie o ID da URL
- *    (.../spreadsheets/d/AQUI_O_ID/edit).
- * 2. Extensões > Apps Script, apague o conteúdo e cole este arquivo.
- * 3. Preencha PLANILHA_ID e PASTA_ID abaixo (a pasta do Drive onde
- *    os anexos serão salvos; deixe vazio para criar uma automática).
- * 4. Execute a função instalar() uma vez e autorize os acessos.
- * 5. Implantar > Nova implantação > Aplicativo da Web
- *    - Executar como: eu
- *    - Quem pode acessar: qualquer pessoa
- * 6. Copie a URL /exec e cole em CONFIG.API_URL no index.html
- *    E TAMBÉM em CONFIG.API_URL no aprovacao.html (página do cliente).
- * 7. Se você já usava uma versão anterior, execute atualizar() uma vez
- *    para criar as colunas novas (aprov, status, parecer, avaliador)
- *    e depois publique uma NOVA VERSÃO da implantação.
- *
- * OBSERVAÇÕES
- * - O app aceita anexos de até 60 MB. O Apps Script tem limite
- *   próprio de payload (~50 MB): arquivos muito grandes podem
- *   falhar no envio e ficam disponíveis apenas na sessão do
- *   navegador. Para uso pesado, suba o arquivo direto no Drive
- *   e cole o link no card.
- * - As senhas ficam em texto na planilha. Mantenha a planilha
- *   restrita a quem administra o sistema.
- *************************************************************/
-
 var PLANILHA_ID = '';                 // ID da planilha (deixe vazio para o script criar uma sozinho)
 var PASTA_ID    = '';                 // ID da pasta do Drive para anexos (opcional)
 var PASTA_NOME  = 'PAUTA - anexos';   // usada quando PASTA_ID está vazio
 
 var ABAS = {
   USUARIOS: ['id','nome','usuario','senha','papel'],
-  COLUNAS : ['id','titulo','cor','aprov'],
-  CARTOES : ['id','colId','titulo','desc','prioridade','inicio','prazo','hora','resp','tipo','criado','status','parecer','avaliador','anexos'],
+  QUADROS : ['id','nome'],
+  COLUNAS : ['id','quadroId','titulo','cor','aprov'],
+  ETIQUETAS:['id','nome','cor'],
+  CARTOES : ['id','colId','titulo','desc','prioridade','canal','etiquetas','inicio','prazo','hora','resp','tipo','criado','status','parecer','avaliador','anexos'],
   POSTS   : ['id','titulo','texto','canal','autor','data','hora','status','parecer','avaliador','anexos'],
   PEDIDOS : ['id','usuario','quando','status'],
   LOG     : ['quando','acao','detalhe']
@@ -97,14 +68,32 @@ function migrar_(nome) {
 }
 
 function atualizar() {
-  ['COLUNAS', 'CARTOES', 'POSTS'].forEach(function (n) { migrar_(n); });
+  ['QUADROS', 'COLUNAS', 'ETIQUETAS', 'CARTOES', 'POSTS'].forEach(function (n) { migrar_(n); });
+  semear_();
   Logger.log('Abas atualizadas.');
   return 'Abas atualizadas.';
 }
 
+/* Garante uma fila padrão e liga as colunas antigas a ela. */
+function semear_() {
+  var quadros = lerAba_('QUADROS');
+  if (!quadros.length) {
+    quadros = [{ id: 'q1', nome: 'Quadro principal' }];
+    gravarAba_('QUADROS', quadros);
+  }
+  var colunas = lerAba_('COLUNAS');
+  var falta = colunas.filter(function (c) { return !c.quadroId; });
+  if (falta.length) {
+    colunas.forEach(function (c) { if (!c.quadroId) c.quadroId = quadros[0].id; });
+    gravarAba_('COLUNAS', colunas);
+    log_('semear', falta.length + ' coluna(s) ligada(s) a ' + quadros[0].nome);
+  }
+}
+
 function instalar() {
   Object.keys(ABAS).forEach(function (nome) { aba_(nome); });
-  ['COLUNAS', 'CARTOES', 'POSTS'].forEach(function (n) { migrar_(n); });
+  ['QUADROS', 'COLUNAS', 'ETIQUETAS', 'CARTOES', 'POSTS'].forEach(function (n) { migrar_(n); });
+  semear_();
   var sh = aba_('USUARIOS');
   if (sh.getLastRow() < 2) {
     sh.appendRow([Utilities.getUuid().slice(0, 8), 'Administrador', 'admin', 'pauta2026', 'admin']);
@@ -164,9 +153,12 @@ function log_(acao, detalhe) {
 /* ---------------- ações ---------------- */
 
 function carregarTudo_() {
+  semear_();
   return {
     usuarios: lerAba_('USUARIOS'),
+    quadros : lerAba_('QUADROS'),
     colunas : lerAba_('COLUNAS'),
+    etiquetas: lerAba_('ETIQUETAS'),
     cartoes : lerAba_('CARTOES'),
     posts   : lerAba_('POSTS'),
     pedidos : lerAba_('PEDIDOS')
@@ -176,7 +168,7 @@ function carregarTudo_() {
 /* Leitura para a página pública de aprovação (aprovacao.html).
    Nunca devolve a aba de usuários nem senhas. */
 function carregarPublico_() {
-  ['COLUNAS', 'CARTOES', 'POSTS'].forEach(function (n) { migrar_(n); });
+  ['QUADROS', 'COLUNAS', 'ETIQUETAS', 'CARTOES', 'POSTS'].forEach(function (n) { migrar_(n); });
   var colunas = lerAba_('COLUNAS');
   var idsAprov = colunas.filter(function (c) {
     var v = String(c.aprov || '').toLowerCase();
@@ -184,7 +176,7 @@ function carregarPublico_() {
   }).map(function (c) { return c.id; });
   var cartoes = lerAba_('CARTOES').filter(function (c) { return idsAprov.indexOf(c.colId) >= 0; })
     .map(function (c) {
-      return { id: c.id, colId: c.colId, titulo: c.titulo, inicio: c.inicio, prazo: c.prazo,
+      return { id: c.id, colId: c.colId, titulo: c.titulo, canal: c.canal, inicio: c.inicio, prazo: c.prazo,
                hora: c.hora, status: c.status, parecer: c.parecer, avaliador: c.avaliador,
                anexos: c.anexos || [] };
     });
@@ -229,7 +221,9 @@ function salvarTudo_(d) {
   trava.waitLock(20000);
   try {
     if (d.usuarios) gravarAba_('USUARIOS', d.usuarios);
+    if (d.quadros)  gravarAba_('QUADROS',  d.quadros);
     if (d.colunas)  gravarAba_('COLUNAS',  d.colunas);
+    if (d.etiquetas) gravarAba_('ETIQUETAS', d.etiquetas);
     if (d.cartoes)  gravarAba_('CARTOES',  d.cartoes);
     if (d.posts)    gravarAba_('POSTS',    d.posts);
     if (d.pedidos)  gravarAba_('PEDIDOS',  d.pedidos);
