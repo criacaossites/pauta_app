@@ -251,7 +251,7 @@ function itens(){
   dados.cartoes.forEach(function(c){
     lista.push({tipo:'cartao',id:c.id,titulo:c.titulo,anexos:c.anexos||[],
       status:c.status||'pendente',parecer:c.parecer||'',avaliador:c.avaliador||'',
-      etiqueta:'Ação',data:c.prazo||c.inicio||'',hora:c.hora||''});
+      etiqueta:'Ação'+(c.canal?' · '+c.canal:''),data:c.prazo||c.inicio||'',hora:c.hora||''});
   });
   dados.posts.forEach(function(p){
     lista.push({tipo:'post',id:p.id,titulo:p.titulo,anexos:p.anexos||[],
