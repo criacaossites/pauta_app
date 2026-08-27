@@ -268,10 +268,25 @@ tbody tr:hover{background:var(--superficie)}
   box-shadow:var(--sombra-alta);opacity:0;transition:all .25s ease;pointer-events:none;max-width:88vw;text-align:center}
 #toast.ativo{transform:translateX(-50%);opacity:1}
 
+/* ETIQUETAS COLORIDAS */
+.etq{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;display:inline-flex;align-items:center;gap:4px;letter-spacing:.2px}
+.etq i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.escolha{display:flex;flex-wrap:wrap;gap:6px}
+.escolha button{border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;
+  background:var(--superficie);color:var(--muted);display:inline-flex;align-items:center;gap:5px}
+.escolha button i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.escolha button.on{border-color:currentColor}
+.linha-etq{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;margin-bottom:7px}
+.linha-etq .nm{flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-quadro{padding:6px 11px;border:1px solid var(--line);border-radius:8px;background:var(--superficie);
+  font-size:13px;font-weight:700;max-width:230px}
+
 /* REORDENAR COLUNAS */
 .col-topo[draggable=true]{cursor:grab}
 .pega{color:var(--linha-forte);font-size:14px;line-height:1;letter-spacing:-2px;flex:none;user-select:none}
 .coluna.movendo{opacity:.4}
+.col-lista.solto{background:var(--tint-azul);border-radius:8px}
+.cartao.arrastando{opacity:.35;border-style:dashed}
 .coluna.entra{border-color:var(--azul);box-shadow:0 0 0 3px rgba(0,76,109,.14)}
 
 /* APROVACAO — apenas a arte */
@@ -359,8 +374,11 @@ tbody tr:hover{background:var(--superficie)}
     <section class="vista" id="v-quadro">
       <div class="faixa">
         <div><h2>Quadro de ações</h2><div class="sub" id="resumoQuadro"></div></div>
+        <select class="sel-quadro" id="selQuadro" title="Escolha a fila do kanban"></select>
+        <button class="btn claro mini" id="btnQuadros">Gerenciar filas</button>
         <div class="espaco"></div>
         <span class="nuvem" id="selo1"></span>
+        <button class="btn claro mini" id="btnEtiquetas">Etiquetas</button>
         <button class="btn claro mini" id="btnNovaColuna">+ Nova coluna</button>
         <button class="btn mini" id="btnNovoCartao">+ Nova ação</button>
       </div>
@@ -468,6 +486,9 @@ var Store={
 var CHAVE='pauta_v1';
 var estado=null, sessao=null, abaAtual='quadro', filtroPost='todos';
 var mesRef=new Date(), diaSel=hojeISO(), anexosTmp=[];
+var quadroAtual='', etqTmp=[];
+var CANAIS=['Instagram','LinkedIn','Facebook','WhatsApp','TikTok','YouTube','Mural interno','Site','E-mail'];
+var CORES_ETQ=['#004C6D','#157347','#a4630a','#b02a2a','#6d28d9','#0f766e','#be185d','#4b5563'];
 
 function hojeISO(){ var d=new Date(); return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); }
 function p2(n){ return n<10?'0'+n:''+n; }
@@ -484,11 +505,18 @@ function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.cl
 function padrao(){
   return {
     usuarios:[{id:id(),nome:'Administrador',usuario:'admin',senha:'pauta2026',papel:'admin'}],
+    quadros:[{id:'q1',nome:'Quadro principal'}],
     colunas:[
-      {id:'c1',titulo:'Ideias',cor:'#9aa2ae',aprov:'0'},
-      {id:'c2',titulo:'Em produção',cor:'#004C6D',aprov:'0'},
-      {id:'c3',titulo:'Em aprovação',cor:'#a4630a',aprov:'1'},
-      {id:'c4',titulo:'Publicado',cor:'#157347',aprov:'0'}
+      {id:'c1',quadroId:'q1',titulo:'Ideias',cor:'#9aa2ae',aprov:'0'},
+      {id:'c2',quadroId:'q1',titulo:'Em produção',cor:'#004C6D',aprov:'0'},
+      {id:'c3',quadroId:'q1',titulo:'Em aprovação',cor:'#a4630a',aprov:'1'},
+      {id:'c4',quadroId:'q1',titulo:'Publicado',cor:'#157347',aprov:'0'}
+    ],
+    etiquetas:[
+      {id:'e1',nome:'Marketing',cor:'#6d28d9'},
+      {id:'e2',nome:'Comercial',cor:'#004C6D'},
+      {id:'e3',nome:'Urgente',cor:'#b02a2a'},
+      {id:'e4',nome:'Interno',cor:'#4b5563'}
     ],
     cartoes:[], posts:[], pedidos:[]
   };
@@ -496,16 +524,32 @@ function padrao(){
 function normalizar(){
   if(!estado) estado=padrao();
   var d=padrao();
-  ['usuarios','colunas','cartoes','posts','pedidos'].forEach(function(k){ if(!estado[k]) estado[k]=[]; });
+  ['usuarios','quadros','colunas','etiquetas','cartoes','posts','pedidos'].forEach(function(k){ if(!estado[k]) estado[k]=[]; });
   if(!estado.usuarios.length) estado.usuarios=d.usuarios;
+  if(!estado.quadros.length) estado.quadros=[{id:'q1',nome:'Quadro principal'}];
   if(!estado.colunas.length) estado.colunas=d.colunas;
+  var q0=estado.quadros[0].id;
+  estado.colunas.forEach(function(c){ if(!c.quadroId) c.quadroId=q0; });
+  estado.etiquetas.forEach(function(e){ if(!e.cor) e.cor='#4b5563'; });
   estado.colunas.forEach(function(c){
     if(c.cor==='#12467f'||c.cor==='#4169E1'||c.cor==='#2F4FC4') c.cor='#004C6D';
     if(c.aprov===undefined||c.aprov===null||c.aprov==='') c.aprov=/aprova/i.test(c.titulo||'')?'1':'0';
     else c.aprov=(c.aprov===true||c.aprov===1||String(c.aprov)==='1'||String(c.aprov).toLowerCase()==='true')?'1':'0';
   });
   estado.cartoes.forEach(function(c){ if(!c.anexos) c.anexos=[];
-    if(!c.status) c.status=''; if(!c.parecer) c.parecer=''; if(!c.avaliador) c.avaliador=''; });
+    if(!c.status) c.status=''; if(!c.parecer) c.parecer=''; if(!c.avaliador) c.avaliador='';
+    if(!c.canal) c.canal='';
+    if(Object.prototype.toString.call(c.etiquetas)==='[object Array]') c.etiquetas=c.etiquetas.join(',');
+    if(!c.etiquetas) c.etiquetas='';
+    /* converte a antiga etiqueta de texto livre em etiqueta colorida */
+    if(c.tipo && !c.etiquetas){
+      var achou=estado.etiquetas.filter(function(e){
+        return String(e.nome).toLowerCase()===String(c.tipo).toLowerCase(); })[0];
+      if(!achou){ achou={id:id(),nome:String(c.tipo),cor:CORES_ETQ[estado.etiquetas.length%CORES_ETQ.length]};
+        estado.etiquetas.push(achou); }
+      c.etiquetas=achou.id; c.tipo='';
+    }
+  });
   estado.posts.forEach(function(p){ if(!p.anexos) p.anexos=[]; });
 }
 function carregarLocal(){
@@ -720,6 +764,24 @@ function capa(anexos){
   return img?imgSrc(img):'';
 }
 
+/* ---------- filas do kanban ---------- */
+function quadroPorId(qid){ return estado.quadros.filter(function(q){return q.id===qid;})[0]||null; }
+function colunasDoQuadro(qid){ return estado.colunas.filter(function(c){ return c.quadroId===qid; }); }
+function nomeQuadroDaColuna(colId){
+  var c=estado.colunas.filter(function(x){return x.id===colId;})[0];
+  var q=c?quadroPorId(c.quadroId):null;
+  return q?q.nome:'';
+}
+
+/* ---------- etiquetas coloridas ---------- */
+function etiquetaPorId(eid){ return estado.etiquetas.filter(function(e){return e.id===eid;})[0]||null; }
+function idsEtq(c){ return String(c&&c.etiquetas||'').split(',').map(function(x){return x.trim();}).filter(Boolean); }
+function etiquetasDe(c){ return idsEtq(c).map(etiquetaPorId).filter(Boolean); }
+function chipEtq(e){
+  return '<span class="etq" style="background:'+e.cor+'1F;color:'+e.cor+'"><i></i>'+esc(e.nome)+'</span>';
+}
+function cartaoPorId(cid){ return estado.cartoes.filter(function(x){return x.id===cid;})[0]||null; }
+
 /* ---------- colunas de aprovação ---------- */
 function ehColAprov(colId){
   return estado.colunas.filter(function(c){ return c.id===colId && c.aprov==='1'; }).length>0;
@@ -828,10 +890,18 @@ document.getElementById('abas').addEventListener('click',function(e){
 
 /* ---------- quadro ---------- */
 function renderQuadro(){
-  var comData=estado.cartoes.filter(function(c){return c.prazo||c.inicio;}).length;
+  if(!quadroPorId(quadroAtual)) quadroAtual=estado.quadros[0].id;
+  Store.set('pauta_quadro',quadroAtual);
+  document.getElementById('selQuadro').innerHTML=estado.quadros.map(function(q){
+    return '<option value="'+q.id+'"'+(q.id===quadroAtual?' selected':'')+'>'+esc(q.nome)+'</option>'; }).join('');
+  var cols=colunasDoQuadro(quadroAtual);
+  var ids=cols.map(function(c){return c.id;});
+  var daFila=estado.cartoes.filter(function(c){ return ids.indexOf(c.colId)>=0; });
+  var comData=daFila.filter(function(c){return c.prazo||c.inicio;}).length;
   document.getElementById('resumoQuadro').textContent=
-    estado.cartoes.length+' ações · '+comData+' já no planejador';
-  var html=estado.colunas.map(function(col){
+    daFila.length+' ações nesta fila · '+comData+' já no planejador'+
+    (estado.quadros.length>1?' · '+estado.cartoes.length+' no total':'');
+  var html=cols.map(function(col){
     var cards=estado.cartoes.filter(function(c){return c.colId===col.id;});
     return '<div class="coluna" data-col="'+col.id+'">'+
       '<div class="col-topo" draggable="true" data-arrasta="'+col.id+'" title="Arraste para reordenar as seções">'+
@@ -851,11 +921,13 @@ function cartaoHTML(c){
   var st=statusPrazo(c.prazo), cp=capa(c.anexos);
   return '<div class="cartao" draggable="true" data-card="'+c.id+'">'+
     '<div class="tags"><span class="tag '+c.prioridade+'">'+({alta:'ALTA',media:'MÉDIA',baixa:'BAIXA'}[c.prioridade]||'')+'</span>'+
+    etiquetasDe(c).map(chipEtq).join('')+
     (c.tipo?'<span class="tag neutra">'+esc(c.tipo)+'</span>':'')+'</div>'+
     '<h4>'+esc(c.titulo)+'</h4>'+
     (c.desc?'<p>'+esc(c.desc)+'</p>':'')+
     (cp?'<div class="miniatura"><img src="'+esc(cp)+'" alt=""></div>':'')+
     '<div class="cartao-pe">'+
+      (c.canal?'<span class="chip">'+esc(c.canal)+'</span>':'')+
       (c.prazo?'<span class="chip '+st.cls+'">'+st.rot+' '+dataBR(c.prazo)+'</span>':'')+
       (c.hora?'<span class="chip">'+esc(c.hora)+'</span>':'')+
       ((c.anexos&&c.anexos.length)?'<span class="chip">📎 '+c.anexos.length+'</span>':'')+
@@ -870,14 +942,55 @@ function statusPrazo(prazo){
   if(prazo===h) return {cls:'hoje',rot:'Hoje'};
   return {cls:'prazo',rot:'Prazo'};
 }
+var arrastando=null, origemCol=null, colArrasta=null;
+function limparArrasto(){
+  document.querySelectorAll('.coluna').forEach(function(c){ c.classList.remove('alvo','entra','movendo'); });
+  document.querySelectorAll('.col-lista').forEach(function(l){ l.classList.remove('solto'); });
+}
+function refDepoisDe(lista,y){
+  var els=Array.prototype.slice.call(lista.querySelectorAll('.cartao:not(.arrastando)'));
+  for(var i=0;i<els.length;i++){
+    var r=els[i].getBoundingClientRect();
+    if(y < r.top + r.height/2) return els[i];
+  }
+  return null;
+}
+/* relê a ordem que ficou na tela e regrava a lista de ações */
+function reordenarPeloDOM(){
+  var vistos={}, novos=[];
+  document.querySelectorAll('#quadro .coluna').forEach(function(col){
+    var cid=col.dataset.col;
+    col.querySelectorAll('.cartao').forEach(function(el){
+      var c=cartaoPorId(el.dataset.card); if(!c) return;
+      c.colId=cid; vistos[c.id]=1; novos.push(c);
+    });
+  });
+  estado.cartoes.forEach(function(c){ if(!vistos[c.id]) novos.push(c); });
+  estado.cartoes=novos;
+}
+function soltarCartao(){
+  if(!arrastando) return;
+  var caixa=arrastando.closest('.coluna'); if(!caixa) return;
+  var destino=caixa.dataset.col, cid=arrastando.dataset.card, origem=origemCol;
+  arrastando.classList.remove('arrastando'); arrastando=null;
+  reordenarPeloDOM();
+  var c=cartaoPorId(cid), mudou=(destino!==origem);
+  if(c && mudou && ehColAprov(destino) && !ehColAprov(origem)){ c.status='pendente'; c.parecer=''; c.avaliador=''; }
+  salvar(); renderQuadro(); montarAbas();
+  if(mudou && ehColAprov(destino)) toast('Ação enviada para a aprovação do cliente');
+  else if(!mudou) toast('Ordem das ações atualizada');
+}
 function ligarArrasto(){
-  var arrastando=null, colArrasta=null;
-  function limpar(){ document.querySelectorAll('.coluna').forEach(function(c){
-    c.classList.remove('alvo','entra','movendo'); }); }
+  arrastando=null; colArrasta=null;
   document.querySelectorAll('.cartao').forEach(function(el){
-    el.addEventListener('dragstart',function(e){ arrastando=el; colArrasta=null;
-      el.classList.add('arrastando'); e.stopPropagation(); });
-    el.addEventListener('dragend',function(){ el.classList.remove('arrastando'); arrastando=null; limpar(); });
+    el.addEventListener('dragstart',function(e){
+      arrastando=el; colArrasta=null;
+      origemCol=el.closest('.coluna').dataset.col;
+      try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',el.dataset.card); }catch(err){}
+      setTimeout(function(){ el.classList.add('arrastando'); },0);
+      e.stopPropagation();
+    });
+    el.addEventListener('dragend',function(){ el.classList.remove('arrastando'); arrastando=null; limparArrasto(); });
   });
   document.querySelectorAll('.col-topo[data-arrasta]').forEach(function(h){
     h.addEventListener('dragstart',function(e){
@@ -885,26 +998,52 @@ function ligarArrasto(){
       try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',colArrasta); }catch(err){}
       h.parentNode.classList.add('movendo');
     });
-    h.addEventListener('dragend',function(){ colArrasta=null; limpar(); });
+    h.addEventListener('dragend',function(){ colArrasta=null; limparArrasto(); });
+  });
+  /* dentro da lista: reposiciona o cartão na hora, na posição do ponteiro */
+  document.querySelectorAll('.col-lista').forEach(function(lista){
+    lista.addEventListener('dragover',function(e){
+      if(!arrastando) return;
+      e.preventDefault(); e.stopPropagation();
+      lista.classList.add('solto');
+      var ref=refDepoisDe(lista,e.clientY);
+      if(ref) lista.insertBefore(arrastando,ref); else lista.appendChild(arrastando);
+    });
+    lista.addEventListener('dragleave',function(){ lista.classList.remove('solto'); });
+    lista.addEventListener('drop',function(e){
+      if(!arrastando) return;
+      e.preventDefault(); e.stopPropagation(); soltarCartao();
+    });
   });
   document.querySelectorAll('.coluna').forEach(function(col){
-    col.addEventListener('dragover',function(e){ e.preventDefault();
+    col.addEventListener('dragover',function(e){
+      e.preventDefault();
       if(colArrasta){ if(col.dataset.col!==colArrasta) col.classList.add('entra'); }
-      else if(arrastando) col.classList.add('alvo'); });
+      else if(arrastando) col.classList.add('alvo');
+    });
     col.addEventListener('dragleave',function(){ col.classList.remove('alvo','entra'); });
     col.addEventListener('drop',function(e){
       e.preventDefault(); col.classList.remove('alvo','entra');
       if(colArrasta){ var o=colArrasta; colArrasta=null; moverColuna(o,col.dataset.col); return; }
-      if(!arrastando) return;
-      var c=estado.cartoes.filter(function(x){return x.id===arrastando.dataset.card;})[0];
-      if(c && c.colId!==col.dataset.col){
-        var destino=col.dataset.col;
-        if(ehColAprov(destino) && !ehColAprov(c.colId)){ c.status='pendente'; c.parecer=''; c.avaliador=''; }
-        c.colId=destino; salvar(); renderQuadro(); montarAbas();
-        if(ehColAprov(destino)) toast('Ação enviada para a aprovação do cliente');
+      if(arrastando){
+        var lista=col.querySelector('.col-lista');
+        if(lista && arrastando.parentNode!==lista) lista.appendChild(arrastando);
+        soltarCartao();
       }
     });
   });
+}
+/* usado pelos botões de ordem no cartão (funciona também no celular) */
+function moverCartaoPasso(cardId,passo){
+  var c=cartaoPorId(cardId); if(!c) return;
+  var irmaos=estado.cartoes.filter(function(x){return x.colId===c.colId;});
+  var i=irmaos.indexOf(c), j=i+passo;
+  if(i<0||j<0||j>=irmaos.length) return;
+  var alvo=irmaos[j];
+  estado.cartoes.splice(estado.cartoes.indexOf(c),1);
+  var k=estado.cartoes.indexOf(alvo);
+  estado.cartoes.splice(passo>0?k+1:k,0,c);
+  salvar(); renderQuadro(); toast('Ordem das ações atualizada');
 }
 document.getElementById('quadro').addEventListener('click',function(e){
   var add=e.target.closest('[data-add]'); if(add){ modalCartao(null,add.dataset.add); return; }
@@ -913,9 +1052,13 @@ document.getElementById('quadro').addEventListener('click',function(e){
   var card=e.target.closest('[data-card]'); if(card) modalCartao(card.dataset.card);
 });
 document.getElementById('btnNovaColuna').onclick=function(){ modalColuna(null); };
+document.getElementById('btnEtiquetas').onclick=function(){ modalEtiquetas(); };
+document.getElementById('btnQuadros').onclick=function(){ modalQuadros(); };
+document.getElementById('selQuadro').onchange=function(){ quadroAtual=this.value; renderQuadro(); };
 document.getElementById('btnNovoCartao').onclick=function(){
-  if(!estado.colunas.length){ toast('Crie uma coluna primeiro.'); return; }
-  modalCartao(null,estado.colunas[0].id);
+  var cols=colunasDoQuadro(quadroAtual);
+  if(!cols.length){ toast('Crie uma coluna nesta fila primeiro.'); return; }
+  modalCartao(null,cols[0].id);
 };
 
 function modalColuna(colId){
@@ -926,7 +1069,13 @@ function modalColuna(colId){
     '<button class="fechar" onclick="fecharModal()">×</button></div>'+
     '<div class="modal-corpo">'+
       '<div class="campo"><label for="colTit">Nome da coluna</label><input id="colTit" value="'+esc(col?col.titulo:'')+'" placeholder="Ex.: Em revisão"></div>'+
-      '<div class="campo"><label for="colCor">Cor</label><select id="colCor">'+ops+'</select></div>'+
+      '<div class="duplo">'+
+        '<div class="campo"><label for="colCor">Cor</label><select id="colCor">'+ops+'</select></div>'+
+        '<div class="campo"><label for="colQuadro">Fila do kanban</label><select id="colQuadro">'+
+          estado.quadros.map(function(q){ var atual=col?col.quadroId:quadroAtual;
+            return '<option value="'+q.id+'"'+(q.id===atual?' selected':'')+'>'+esc(q.nome)+'</option>'; }).join('')+
+        '</select></div>'+
+      '</div>'+
       '<div class="campo"><label style="display:flex;align-items:center;gap:8px;font-weight:600">'+
         '<input id="colAprov" type="checkbox" style="width:auto"'+(col&&col.aprov==='1'?' checked':'')+'>'+
         'Enviar as ações desta seção para a aprovação do cliente</label>'+
@@ -946,8 +1095,9 @@ function modalColuna(colId){
     if(!t){ toast('Dê um nome para a coluna.'); return; }
     var cor=document.getElementById('colCor').value;
     var ap=document.getElementById('colAprov').checked?'1':'0';
-    if(col){ col.titulo=t; col.cor=cor; col.aprov=ap; }
-    else estado.colunas.push({id:id(),titulo:t,cor:cor,aprov:ap});
+    var qd=document.getElementById('colQuadro').value||quadroAtual;
+    if(col){ col.titulo=t; col.cor=cor; col.aprov=ap; col.quadroId=qd; }
+    else estado.colunas.push({id:id(),quadroId:qd,titulo:t,cor:cor,aprov:ap});
     salvar(); fecharModal(); renderQuadro(); montarAbas(); toast('Coluna salva');
   };
   if(col) document.getElementById('excluirCol').onclick=function(){
@@ -956,6 +1106,135 @@ function modalColuna(colId){
     estado.cartoes=estado.cartoes.filter(function(c){return c.colId!==col.id;});
     estado.colunas=estado.colunas.filter(function(c){return c.id!==col.id;});
     salvar(); fecharModal(); renderQuadro(); toast('Coluna excluída');
+  };
+}
+
+function renderEscolhaEtq(){
+  var el=document.getElementById('cEtq'); if(!el) return;
+  el.innerHTML = estado.etiquetas.length ? estado.etiquetas.map(function(e){
+    var on=etqTmp.indexOf(e.id)>=0;
+    return '<button type="button" data-etq="'+e.id+'" class="'+(on?'on':'')+'"'+
+      (on?' style="background:'+e.cor+'1F;color:'+e.cor+'"':'')+
+      '><i style="background:'+e.cor+'"></i>'+esc(e.nome)+'</button>';
+  }).join('') : '<p class="aviso">Nenhuma etiqueta criada ainda.</p>';
+}
+function ligarEtiquetas(sel){
+  etqTmp=(sel||[]).slice();
+  renderEscolhaEtq();
+  var el=document.getElementById('cEtq'); if(!el) return;
+  el.onclick=function(e){
+    var b=e.target.closest('[data-etq]'); if(!b) return;
+    var eid=b.dataset.etq;
+    if(etqTmp.indexOf(eid)>=0) etqTmp=etqTmp.filter(function(x){return x!==eid;});
+    else etqTmp.push(eid);
+    renderEscolhaEtq();
+  };
+}
+
+/* ---------- gerenciar etiquetas ---------- */
+function modalEtiquetas(){
+  function linhas(){
+    return estado.etiquetas.length ? estado.etiquetas.map(function(e){
+      return '<div class="linha-etq">'+
+        '<input type="color" value="'+esc(e.cor)+'" data-cor="'+e.id+'" style="width:34px;height:30px;padding:0;border:1px solid var(--line);border-radius:6px;background:none">'+
+        '<input class="nm" value="'+esc(e.nome)+'" data-nome="'+e.id+'" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px">'+
+        '<button class="acao rm" data-rme="'+e.id+'">Excluir</button></div>';
+    }).join('') : '<p class="aviso">Nenhuma etiqueta criada.</p>';
+  }
+  abrirModal('<div class="modal-topo"><h3>Etiquetas</h3><button class="fechar" onclick="fecharModal()">×</button></div>'+
+    '<div class="modal-corpo"><div id="etqLista">'+linhas()+'</div>'+
+      '<div class="duplo" style="margin-top:12px">'+
+        '<div class="campo" style="margin:0"><label for="etqNome">Nova etiqueta</label>'+
+        '<input id="etqNome" placeholder="Ex.: Campanha de fim de ano"></div>'+
+        '<div class="campo" style="margin:0"><label for="etqCor">Cor</label>'+
+        '<input id="etqCor" type="color" value="'+CORES_ETQ[estado.etiquetas.length%CORES_ETQ.length]+'" style="height:38px;padding:3px"></div>'+
+      '</div>'+
+      '<p class="aviso">As alterações de nome e cor valem para todas as ações que já usam a etiqueta.</p>'+
+    '</div>'+
+    '<div class="modal-pe"><button class="btn" id="etqAdd">Adicionar etiqueta</button>'+
+    '<button class="btn claro" id="etqFechar">Concluir</button></div>');
+  var lista=document.getElementById('etqLista');
+  lista.addEventListener('input',function(e){
+    var cor=e.target.closest('[data-cor]'), nome=e.target.closest('[data-nome]');
+    if(cor){ var a=etiquetaPorId(cor.dataset.cor); if(a) a.cor=cor.value; }
+    if(nome){ var b=etiquetaPorId(nome.dataset.nome); if(b) b.nome=nome.value; }
+  });
+  lista.addEventListener('click',function(e){
+    var rm=e.target.closest('[data-rme]'); if(!rm) return;
+    var eid=rm.dataset.rme;
+    var uso=estado.cartoes.filter(function(c){ return idsEtq(c).indexOf(eid)>=0; }).length;
+    if(uso && !confirm('Esta etiqueta está em '+uso+' ação(ões). Remover mesmo assim?')) return;
+    estado.etiquetas=estado.etiquetas.filter(function(x){return x.id!==eid;});
+    estado.cartoes.forEach(function(c){
+      c.etiquetas=idsEtq(c).filter(function(x){return x!==eid;}).join(','); });
+    lista.innerHTML=linhas();
+  });
+  document.getElementById('etqAdd').onclick=function(){
+    var n=document.getElementById('etqNome').value.trim();
+    if(!n){ toast('Dê um nome para a etiqueta.'); return; }
+    estado.etiquetas.push({id:id(),nome:n,cor:document.getElementById('etqCor').value});
+    document.getElementById('etqNome').value='';
+    lista.innerHTML=linhas();
+  };
+  document.getElementById('etqFechar').onclick=function(){
+    salvar(); fecharModal(); renderQuadro(); toast('Etiquetas salvas');
+  };
+}
+
+/* ---------- gerenciar filas do kanban ---------- */
+function modalQuadros(){
+  function linhas(){
+    return estado.quadros.map(function(q){
+      var nc=colunasDoQuadro(q.id).length;
+      var ids=colunasDoQuadro(q.id).map(function(c){return c.id;});
+      var na=estado.cartoes.filter(function(c){return ids.indexOf(c.colId)>=0;}).length;
+      return '<div class="linha-etq">'+
+        '<input class="nm" value="'+esc(q.nome)+'" data-qn="'+q.id+'" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px">'+
+        '<span class="chip">'+nc+' col · '+na+' ações</span>'+
+        (estado.quadros.length>1?'<button class="acao rm" data-rmq="'+q.id+'">Excluir</button>':'')+
+      '</div>';
+    }).join('');
+  }
+  abrirModal('<div class="modal-topo"><h3>Filas do kanban</h3><button class="fechar" onclick="fecharModal()">×</button></div>'+
+    '<div class="modal-corpo"><div id="qdLista">'+linhas()+'</div>'+
+      '<div class="campo" style="margin-top:12px"><label for="qdNome">Nova fila</label>'+
+      '<input id="qdNome" placeholder="Ex.: Clientes · Redes sociais"></div>'+
+      '<p class="aviso">Cada fila tem as próprias colunas e ações. O planejador e a aprovação continuam mostrando tudo junto.</p>'+
+    '</div>'+
+    '<div class="modal-pe"><button class="btn" id="qdAdd">Criar fila</button>'+
+    '<button class="btn claro" id="qdFechar">Concluir</button></div>');
+  var lista=document.getElementById('qdLista');
+  lista.addEventListener('input',function(e){
+    var n=e.target.closest('[data-qn]'); if(!n) return;
+    var q=quadroPorId(n.dataset.qn); if(q) q.nome=n.value;
+  });
+  lista.addEventListener('click',function(e){
+    var rm=e.target.closest('[data-rmq]'); if(!rm) return;
+    var qid=rm.dataset.rmq;
+    var ids=colunasDoQuadro(qid).map(function(c){return c.id;});
+    var na=estado.cartoes.filter(function(c){return ids.indexOf(c.colId)>=0;}).length;
+    if(!confirm('Excluir esta fila'+(na?' e as '+na+' ação(ões) dela':'')+'?')) return;
+    estado.cartoes=estado.cartoes.filter(function(c){return ids.indexOf(c.colId)<0;});
+    estado.colunas=estado.colunas.filter(function(c){return c.quadroId!==qid;});
+    estado.quadros=estado.quadros.filter(function(q){return q.id!==qid;});
+    if(quadroAtual===qid) quadroAtual=estado.quadros[0].id;
+    lista.innerHTML=linhas();
+  });
+  document.getElementById('qdAdd').onclick=function(){
+    var n=document.getElementById('qdNome').value.trim();
+    if(!n){ toast('Dê um nome para a fila.'); return; }
+    var novo={id:id(),nome:n};
+    estado.quadros.push(novo);
+    ['A fazer','Em andamento','Concluído'].forEach(function(t,i){
+      estado.colunas.push({id:id(),quadroId:novo.id,titulo:t,
+        cor:['#9aa2ae','#004C6D','#157347'][i],aprov:'0'}); });
+    quadroAtual=novo.id;
+    document.getElementById('qdNome').value='';
+    lista.innerHTML=linhas();
+    toast('Fila criada com 3 colunas');
+  };
+  document.getElementById('qdFechar').onclick=function(){
+    salvar(); fecharModal(); renderQuadro(); montarAbas(); toast('Filas salvas');
   };
 }
 
@@ -969,20 +1248,31 @@ function modalCartao(cardId,colId){
       '<div class="campo"><label for="cDesc">Descrição</label><textarea id="cDesc">'+esc(c?c.desc:'')+'</textarea></div>'+
       '<div class="duplo">'+
         '<div class="campo"><label for="cCol">Coluna</label><select id="cCol">'+
-          estado.colunas.map(function(x){return '<option value="'+x.id+'"'+(x.id===col?' selected':'')+'>'+esc(x.titulo)+'</option>';}).join('')+'</select></div>'+
+          estado.quadros.map(function(q){
+            var cols=colunasDoQuadro(q.id); if(!cols.length) return '';
+            return '<optgroup label="'+esc(q.nome)+'">'+cols.map(function(x){
+              return '<option value="'+x.id+'"'+(x.id===col?' selected':'')+'>'+esc(x.titulo)+'</option>'; }).join('')+'</optgroup>';
+          }).join('')+'</select></div>'+
+        '<div class="campo"><label for="cCanal">Plataforma</label><select id="cCanal">'+
+          '<option value="">— sem plataforma —</option>'+
+          CANAIS.map(function(x){return '<option'+(c&&c.canal===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
+      '</div>'+
+      '<div class="duplo">'+
         '<div class="campo"><label for="cPri">Prioridade</label><select id="cPri">'+
           ['alta','media','baixa'].map(function(p){ return '<option value="'+p+'"'+
             (c&&c.prioridade===p?' selected':(!c&&p==='media'?' selected':''))+'>'+({alta:'Alta',media:'Média',baixa:'Baixa'})[p]+'</option>'; }).join('')+'</select></div>'+
+        '<div class="campo"><label for="cResp">Responsável</label><input id="cResp" value="'+esc(c?c.resp:sessao.nome)+'"></div>'+
       '</div>'+
       '<div class="duplo">'+
         '<div class="campo"><label for="cIni">Início</label><input id="cIni" type="date" value="'+esc(c?c.inicio:'')+'"></div>'+
         '<div class="campo"><label for="cPrazo">Prazo</label><input id="cPrazo" type="date" value="'+esc(c?c.prazo:'')+'"></div>'+
       '</div>'+
-      '<div class="duplo">'+
-        '<div class="campo"><label for="cHora">Hora</label><input id="cHora" type="time" value="'+esc(c?c.hora:'')+'"></div>'+
-        '<div class="campo"><label for="cResp">Responsável</label><input id="cResp" value="'+esc(c?c.resp:sessao.nome)+'"></div>'+
-      '</div>'+
-      '<div class="campo"><label for="cTipo">Etiqueta</label><input id="cTipo" value="'+esc(c?c.tipo:'')+'" placeholder="Ex.: Marketing, Comercial, Interno"></div>'+
+      '<div class="campo"><label for="cHora">Hora</label><input id="cHora" type="time" value="'+esc(c?c.hora:'')+'"></div>'+
+      '<div class="campo"><label>Etiquetas</label><div class="escolha" id="cEtq"></div>'+
+        '<p class="aviso">Crie ou edite as etiquetas pelo botão <b>Etiquetas</b>, no topo do quadro.</p></div>'+
+      (c?'<div class="campo"><label>Ordem dentro da coluna</label>'+
+        '<button class="btn claro mini" id="cSobe">↑ Subir</button> '+
+        '<button class="btn claro mini" id="cDesce">↓ Descer</button></div>':'')+
       campoAnexos('cArq','cAnexos')+
       '<p class="aviso">Ao informar início ou prazo, a ação entra no planejador na hora.</p>'+
     '</div>'+
@@ -990,6 +1280,11 @@ function modalCartao(cardId,colId){
     '<button class="btn claro" onclick="fecharModal()">Cancelar</button>'+
     (c?'<span class="espaco"></span><button class="btn perigo mini" id="excluirCard">Excluir</button>':'')+'</div>');
   ligarAnexos('cArq','cAnexos', c?(c.anexos||[]):[]);
+  ligarEtiquetas(c?idsEtq(c):[]);
+  if(c){
+    document.getElementById('cSobe').onclick=function(){ moverCartaoPasso(c.id,-1); fecharModal(); };
+    document.getElementById('cDesce').onclick=function(){ moverCartaoPasso(c.id, 1); fecharModal(); };
+  }
   document.getElementById('salvarCard').onclick=function(){
     var t=document.getElementById('cTit').value.trim();
     if(!t){ toast('Escreva o nome da ação.'); return; }
@@ -1001,7 +1296,8 @@ function modalCartao(cardId,colId){
       prazo:document.getElementById('cPrazo').value,
       hora:document.getElementById('cHora').value,
       resp:document.getElementById('cResp').value.trim(),
-      tipo:document.getElementById('cTipo').value.trim() };
+      canal:document.getElementById('cCanal').value,
+      etiquetas:etqTmp.join(','), tipo:'' };
     enviarAnexos(anexosTmp,function(lista){
       obj.anexos=lista;
       if(c){ var antes=c.colId; for(var k in obj) c[k]=obj[k];
@@ -1088,7 +1384,9 @@ function cartaoAprovHTML(c){
     '<div class="post-pe">'+
       (admin()?'<button class="btn ok mini" data-apc="'+c.id+'">Aprovar</button>'+
                '<button class="btn perigo mini" data-rpc="'+c.id+'">Reprovar</button>':'')+
-      '<span class="espaco"></span><span class="chip">Ação · '+esc(nomeCol(c.colId))+'</span>'+
+      '<span class="espaco"></span>'+
+      (c.canal?'<span class="chip">'+esc(c.canal)+'</span>':'')+
+      '<span class="chip">'+esc(nomeQuadroDaColuna(c.colId))+' · '+esc(nomeCol(c.colId))+'</span>'+
     '</div></article>';
 }
 function renderPosts(){
@@ -1160,7 +1458,7 @@ document.getElementById('btnNovoPost').onclick=function(){ modalPost(null); };
 
 function modalPost(postId){
   var p=postId?estado.posts.filter(function(x){return x.id===postId;})[0]:null;
-  var canais=['Instagram','LinkedIn','Facebook','WhatsApp','Mural interno','Site'];
+  var canais=CANAIS;
   abrirModal('<div class="modal-topo"><h3>'+(p?'Editar post':'Enviar post para aprovação')+'</h3>'+
     '<button class="fechar" onclick="fecharModal()">×</button></div>'+
     '<div class="modal-corpo">'+
@@ -1354,6 +1652,8 @@ document.getElementById('btnSair').onclick=sair;
 
 function iniciar(){
   document.getElementById('splash').classList.add('oculto');
+  quadroAtual=Store.get('pauta_quadro')||'';
+  if(!quadroPorId(quadroAtual)) quadroAtual=estado.quadros[0].id;
   var sl=document.getElementById('seloLogin');
   sl.textContent=nuvemOk?'Nuvem ativa':'Modo local — sem conexão com a planilha';
   sl.className='nuvem'+(nuvemOk?' on':'');
